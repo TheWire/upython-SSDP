@@ -4,7 +4,7 @@ import struct
 import re
 import errno
 
-SERVER_NAME = "UPnP/1.0" #placeholder
+SERVER_NAME = "uPython-SSDP UPnP/2.0"
 DEVICE_PROFILE = """
 <root xmlns="urn:schemas-upnp-org:device-1-0">
     <specVersion>
@@ -21,13 +21,13 @@ DEVICE_PROFILE = """
 """
 
 
-class Response:
+class Device_Config:
     
-    def __init__(self, msg = {}, uuid="", device_profile=None, device_profile_path=None):
-        self.ip = '0.0.0.0'
-        self.port = 80
+    def __init__(self, msg = {}, uuid="", urn="MyDevice", ip="127.0.0.1", port=80, device_profile=None, device_profile_path=None):
+        self.ip = ip
+        self.port = port
         self.msg = msg
-        self.set_location(self.ip, self.port)
+        self.urn = urn
         self.device_profile = device_profile
         self.device_profile_path = device_profile_path
         if device_profile_path is not None and self.__path_exists(device_profile_path):
@@ -37,22 +37,15 @@ class Response:
         else:
             self.device_profile = DEVICE_PROFILE
         
-        
-        if uuid is not "": self.msg["USN"] = "uuid: %s" % uuid
-        if "SERVER" not in self.msg: msg["SERVER"] = SERVER_NAME
-        if "CACHE-CONTROL" not in self.msg: self.msg["CACHE-CONTROL"] = "max-age=1800"
-        if "ST" not in self.msg: self.msg["ST"] = "upnp:rootdevice" #placeholder
-    
-    def set_location(self, ip, port):
         self.msg["LOCATION"] = "http://%s:%d/device.xml" % (ip, port)
-        
-    def set_port(self, port):
-        self.port = port
-        self.set_location(self.ip, self.port)
-        
-    def set_ip(self, ip):
-        self.ip = ip
-        self.set_location(self.ip, self.port)
+        if uuid != "":
+            self.msg["USN"] = "uuid:%s::%s" % (uuid, urn)
+        else:
+            self.msg["USN"] = "%s" % urn
+        self.msg["SERVER"] = SERVER_NAME
+        self.msg["CACHE-CONTROL"] = "max-age=1800"
+        self.msg["ST"] = self.urn
+    
         
     def __path_exists(self, path):
         try:
@@ -62,16 +55,13 @@ class Response:
             return False
         return True
         
-    def __str__(self):
+    def message(self):
         str = "HTTP/1.1 200 OK\r\n"
         for key, value in self.msg.items():
             str += "%s: %s\r\n" % (key, value)
             
         str += "\r\n"
-        return str
-    
-    def to_bytes(self):
-        return self.__str__().encode('ASCII')
+        return str.encode('ASCII')
 
 class SSDP_Server:
     
@@ -81,14 +71,12 @@ class SSDP_Server:
     SSDP_IP_BYTES = b'\xef\xff\xff\xfa'
     SSDP_PORT = 1900
     
-    def __init__(self, ip, response=Response(), tcp_port=80):
-        if type(response) is not Response:
-            raise SSDP_Exception("Response type required")
-        self.response = response
-        self.ip = ip
-        self.tcp_port = tcp_port
-        self.response.set_port(tcp_port)
-        self.response.set_ip(self.ip)
+    def __init__(self, device_config=Device_Config()):
+        if type(device_config) is not Device_Config:
+            raise SSDP_Exception("Device_Config type required")
+        self.device_config = device_config
+        self.ip = device_config.ip
+        self.tcp_port = device_config.port
         
     async def listen(self):
         uasyncio.create_task(self.__listen())
@@ -106,7 +94,7 @@ class SSDP_Server:
         while True:
             try:
                 data, address = self.sock.recvfrom(1024)
-                if self.__parse_response(data):
+                if self.__parse_request(data):
                     self.__send_response(address)
             except OSError as e:
                 if e.errno != errno.ETIMEDOUT:
@@ -117,11 +105,11 @@ class SSDP_Server:
         read = await reader.read(1024)
         writer.write("HTTP/1.0 200 OK\r\n")
         writer.write("Content-Type: application/xml\r\n\r\n")
-        if self.response.device_profile_path is not None:
-            file = open(self.response.device_profile_path)
+        if self.device_config.device_profile_path is not None:
+            file = open(self.device_config.device_profile_path)
             writer.write(file.read())
         else:
-            writer.write(self.response.device_profile)
+            writer.write(self.device_config.device_profile)
 
         await writer.drain()
         writer.close()
@@ -130,15 +118,15 @@ class SSDP_Server:
                     
     def __send_response(self, address):
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        send_sock.sendto(self.response.to_bytes(), address)
+        send_sock.sendto(self.device_config.message(), address)
         send_sock.close()
         
-    def __parse_response(self, data):
-        response = data.decode().split("\r\n")
-        if len(response) < 3: return False
-        if re.match("^(M\-SEARCH)", response[0]) is None: return False
+    def __parse_request(self, data):
+        request = data.decode().split("\r\n")
+        if len(request) < 3: return False
+        if re.match("^(M\-SEARCH)", request[0]) is None: return False
         headers = {}
-        for line in response[1:]:
+        for line in request[1:]:
             parts = line.split(":", 1)
             if len(parts) == 2:
                 headers[parts[0].upper()] = parts[1].strip()  
@@ -146,7 +134,7 @@ class SSDP_Server:
             return False
         if headers['ST'] is None:
             return False
-        elif headers['ST'] != "ssdp:all" and headers['ST'] != "upnp:rootdevice":
+        elif headers['ST'] != "ssdp:all" and headers['ST'] != self.device_config.urn:
             return False
         return True
         
