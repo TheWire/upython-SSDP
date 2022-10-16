@@ -23,6 +23,11 @@ server = ssdp.SSDP_Server()
 uasyncio.run(main_loop(server))
 ```
 
+### Stop server
+```
+server.stop()
+```
+
 ## Configuration
 
 SSDP server can be passed a Device_Config argument.

@@ -77,18 +77,29 @@ class SSDP_Server:
         self.device_config = device_config
         self.ip = device_config.ip
         self.tcp_port = device_config.port
+        self.__listen_task = None
         
     async def listen(self):
-        uasyncio.create_task(self.__listen())
-        await uasyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
+        if self.__listen_task != None:
+            raise SSDP_Exception("ssdp server already started")
+            return
+        self.__listen_task = uasyncio.create_task(self.__listen())
+        self.__tcp_server = await uasyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
         print("SSDP server started")
-        while True:
-            await uasyncio.sleep_ms(500)
+
+    async def stop(self):
+        if self.__listen_task == None:
+            raise SSDP_Exception("ssdp server not started")
+        self.__listen_task.cancel()
+        self.__listen_task = None
+        self.__tcp_server.close()
+        await self.__tcp_server.wait_closed()
         
     async def __listen(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.IP, self.SSDP_PORT))
         self.sock.settimeout(5)
         while True:
