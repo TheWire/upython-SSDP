@@ -1,4 +1,11 @@
-import uasyncio
+import os
+try:
+    os.uname().sysname
+    import uasyncio as asyncio
+    class TimeoutError(Exception):
+        pass
+except:
+    import asyncio
 import socket
 import struct
 import re
@@ -82,9 +89,8 @@ class SSDP_Server:
     async def listen(self):
         if self.__listen_task != None:
             raise SSDP_Exception("ssdp server already started")
-            return
-        self.__listen_task = uasyncio.create_task(self.__listen())
-        self.__tcp_server = await uasyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
+        self.__listen_task = asyncio.create_task(self.__listen())
+        self.__tcp_server = await asyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
         print("SSDP server started")
 
     async def stop(self):
@@ -107,20 +113,23 @@ class SSDP_Server:
                 data, address = self.sock.recvfrom(1024)
                 if self.__parse_request(data):
                     self.__send_response(address)
-            except OSError as e:
-                if e.errno != errno.ETIMEDOUT:
-                    raise(e)
-            await uasyncio.sleep_ms(50)
+            except TimeoutError:
+                pass
+            except OSError as ose:
+                if ose.errno != errno.ETIMEDOUT and str(ose) != "timed out":                  
+                    print(ose)
+                    raise(ose)
+            await asyncio.sleep(0.05)
         
     async def __serve_device_profile(self, reader, writer):
         read = await reader.read(1024)
-        writer.write("HTTP/1.0 200 OK\r\n")
-        writer.write("Content-Type: application/xml\r\n\r\n")
+        writer.write(b"HTTP/1.0 200 OK\r\n")
+        writer.write(b"Content-Type: application/xml\r\n\r\n")
         if self.device_config.device_profile_path is not None:
             file = open(self.device_config.device_profile_path)
             writer.write(file.read())
         else:
-            writer.write(self.device_config.device_profile)
+            writer.write(bytes(self.device_config.device_profile, "utf-8"))
 
         await writer.drain()
         writer.close()
