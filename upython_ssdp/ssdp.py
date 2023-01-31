@@ -44,11 +44,12 @@ class Device_Config:
         else:
             self.device_profile = DEVICE_PROFILE
         
-        self.msg["LOCATION"] = "http://%s:%d/device.xml" % (ip, port)
+        self.msg["HOST"] = f"{ip}:{port}" % ip
+        self.msg["LOCATION"] = f"http://{ip}:{port}/device.xml"
         if uuid != "":
-            self.msg["USN"] = "uuid:%s::%s" % (uuid, urn)
+            self.msg["USN"] = f"uuid:{uuid}::{urn}" % (uuid, urn)
         else:
-            self.msg["USN"] = "%s" % urn
+            self.msg["USN"] = f"{urn}"
         self.msg["SERVER"] = SERVER_NAME
         self.msg["CACHE-CONTROL"] = "max-age=1800"
         self.msg["ST"] = self.urn
@@ -63,7 +64,7 @@ class Device_Config:
         return True
         
     def message(self):
-        str = "HTTP/1.1 200 OK\r\n"
+        str = "NOTIFY * HTTP/1.1\r\n"
         for key, value in self.msg.items():
             str += "%s: %s\r\n" % (key, value)
             
