@@ -44,10 +44,10 @@ class Device_Config:
         else:
             self.device_profile = DEVICE_PROFILE
         
-        self.msg["HOST"] = f"{ip}:{port}" % ip
+        self.msg["HOST"] = f"{ip}:{port}"
         self.msg["LOCATION"] = f"http://{ip}:{port}/device.xml"
         if uuid != "":
-            self.msg["USN"] = f"uuid:{uuid}::{urn}" % (uuid, urn)
+            self.msg["USN"] = f"uuid:{uuid}::{urn}"
         else:
             self.msg["USN"] = f"{urn}"
         self.msg["SERVER"] = SERVER_NAME
