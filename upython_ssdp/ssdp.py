@@ -139,7 +139,10 @@ class SSDP_Server:
                     
     def __send_response(self, address):
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        send_sock.sendto(self.device_config.message(), address)
+        s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
+        send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
+        send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        send_sock.sendto(self.device_config.message(), (self.SSDP_IP, self.SSDP_PORT))
         send_sock.close()
         
     def __parse_request(self, data):
