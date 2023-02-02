@@ -11,6 +11,9 @@ import struct
 import re
 import errno
 
+SSDP_IP = "239.255.255.250"
+SSDP_PORT = 1900
+
 SERVER_NAME = "uPython-SSDP UPnP/2.0"
 DEVICE_PROFILE = """
 <root xmlns="urn:schemas-upnp-org:device-1-0">
@@ -28,10 +31,13 @@ DEVICE_PROFILE = """
 """
 
 
+
 class Device_Config:
     
-    def __init__(self, msg = {}, uuid="", urn="MyDevice", ip="127.0.0.1", port=80, device_profile=None, device_profile_path=None):
+    def __init__(self, msg = {}, uuid="", urn="MyDevice", ip="127.0.0.1",
+     tcp_server_enabled=True, tcp_location=None, port=80, device_profile=None, device_profile_path=None):
         self.ip = ip
+        self.tcp_server_enabled = tcp_server_enabled
         self.port = port
         self.msg = msg
         self.urn = urn
@@ -44,8 +50,13 @@ class Device_Config:
         else:
             self.device_profile = DEVICE_PROFILE
         
-        self.msg["HOST"] = f"{ip}:{port}"
-        self.msg["LOCATION"] = f"http://{ip}:{port}/device.xml"
+        self.msg["HOST"] = f"{SSDP_IP}:{SSDP_PORT}"
+        if tcp_server_enabled:
+             self.msg["LOCATION"] = f"http://{ip}:{port}/device.xml"
+        elif not tcp_server_enabled and tcp_location:
+            self.msg["LOCATION"] = tcp_location
+        else:
+            self.msg["LOCATION"] = f"http://{ip}:{port}"
         if uuid != "":
             self.msg["USN"] = f"uuid:{uuid}::{urn}"
         else:
@@ -71,6 +82,7 @@ class Device_Config:
         else:
             raise(SSDP_Exception("invalid cast type argument"))
         for key, value in self.msg.items():
+            if key == "HOST" and type == "UNICAST": continue
             str += "%s: %s\r\n" % (key, value)
             
         str += "\r\n"
@@ -81,9 +93,7 @@ class SSDP_Server:
     
     IP = "0.0.0.0"
     IP_BYTES = b'\x00\x00\x00\x00'
-    SSDP_IP = "239.255.255.250"
     SSDP_IP_BYTES = b'\xef\xff\xff\xfa'
-    SSDP_PORT = 1900
     
     def __init__(self, device_config=Device_Config()):
         if type(device_config) is not Device_Config:
@@ -97,7 +107,8 @@ class SSDP_Server:
         if self.__listen_task != None:
             raise SSDP_Exception("ssdp server already started")
         self.__listen_task = asyncio.create_task(self.__listen())
-        self.__tcp_server = await asyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
+        if self.device_config.tcp_server_enabled:
+            self.__tcp_server = await asyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
         print("SSDP server started")
 
     async def stop(self):
@@ -105,15 +116,16 @@ class SSDP_Server:
             raise SSDP_Exception("ssdp server not started")
         self.__listen_task.cancel()
         self.__listen_task = None
-        self.__tcp_server.close()
-        await self.__tcp_server.wait_closed()
+        if self.device_config.tcp_server_enabled:
+            self.__tcp_server.close()
+            await self.__tcp_server.wait_closed()
         
     async def __listen(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.IP, self.SSDP_PORT))
+        self.sock.bind((self.IP, SSDP_PORT))
         self.sock.settimeout(5)
         while True:
             try:
@@ -149,7 +161,7 @@ class SSDP_Server:
         s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
         send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
         send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        send_sock.sendto(self.device_config.message(type="MULTICAST"), (self.SSDP_IP, self.SSDP_PORT))
+        send_sock.sendto(self.device_config.message(type="MULTICAST"), (SSDP_IP, SSDP_PORT))
         send_sock.close()
         #unicast
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
