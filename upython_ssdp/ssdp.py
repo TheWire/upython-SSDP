@@ -63,13 +63,19 @@ class Device_Config:
             return False
         return True
         
-    def message(self):
-        str = "NOTIFY * HTTP/1.1\r\n"
+    def message(self, type="MULTICAST"):
+        if type == "MULTICAST":
+            str = "NOTIFY * HTTP/1.1\r\n"
+        elif type == "UNICAST":
+            str = "HTTP/1.1 200 OK\r\n"
+        else:
+            raise(SSDP_Exception("invalid cast type argument"))
         for key, value in self.msg.items():
             str += "%s: %s\r\n" % (key, value)
             
         str += "\r\n"
         return str.encode('ASCII')
+
 
 class SSDP_Server:
     
@@ -138,11 +144,16 @@ class SSDP_Server:
             
                     
     def __send_response(self, address):
+        #multicast
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
         send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
         send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        send_sock.sendto(self.device_config.message(), (self.SSDP_IP, self.SSDP_PORT))
+        send_sock.sendto(self.device_config.message(type="MULTICAST"), (self.SSDP_IP, self.SSDP_PORT))
+        send_sock.close()
+        #unicast
+        send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        send_sock.sendto(self.device_config.message(type="UNICAST"), address)
         send_sock.close()
         
     def __parse_request(self, data):
