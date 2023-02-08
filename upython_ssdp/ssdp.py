@@ -126,7 +126,7 @@ class SSDP_Server:
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, s)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.IP, SSDP_PORT))
-        self.sock.settimeout(5)
+        self.sock.settimeout(0.1)
         while True:
             try:
                 data, address = self.sock.recvfrom(1024)
