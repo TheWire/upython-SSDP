@@ -30,8 +30,6 @@ DEVICE_PROFILE = """
 </root>   
 """
 
-
-
 class Device_Config:
     
     def __init__(self, msg = {}, uuid="", urn="MyDevice", ip="127.0.0.1",
@@ -102,6 +100,7 @@ class SSDP_Server:
         self.ip = device_config.ip
         self.tcp_port = device_config.port
         self.__listen_task = None
+        self.__broadcast_task = None
         
     async def listen(self):
         if self.__listen_task != None:
@@ -111,14 +110,37 @@ class SSDP_Server:
             self.__tcp_server = await asyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
         print("SSDP server started")
 
-    async def stop(self):
-        if self.__listen_task == None:
-            raise SSDP_Exception("ssdp server not started")
-        self.__listen_task.cancel()
-        self.__listen_task = None
+    async def broadcast(self, interval):
+        if self.__broadcast_task != None:
+            raise SSDP_Exception("ssdp broadcast already started")
+        self.__broadcast_task = asyncio.create_task(self.__broadcast(interval))
+
+    async def stop_listen(self):
+        if self.__listen_task:
+            self.__listen_task.cancel()
+            self.__listen_task = None
+
+    async def stop_broadcast(self):
+        if self.__broadcast_task:
+            self.__broadcast_task.cancel()
+            self.__broadcast_task = None
+
+    async def stop_tcp_server(self):
         if self.device_config.tcp_server_enabled:
             self.__tcp_server.close()
             await self.__tcp_server.wait_closed()
+
+
+    async def stop(self):
+        self.stop_listen()
+        self.stop_tcp_server()
+        self.stop_broadcast()
+
+    
+
+    async def __broadcast(self, interval=5):
+        self.__send_multicast()
+        await asyncio.sleep(interval)
         
     async def __listen(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -153,9 +175,13 @@ class SSDP_Server:
         await writer.drain()
         writer.close()
         await writer.wait_closed()
-            
-                    
+
+
     def __send_response(self, address):
+        self.__send_multicast()
+        self.__send_unicast(address)
+                    
+    def __send_multicast(self):
         #multicast
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = struct.pack("4s4s", self.SSDP_IP_BYTES, self.IP_BYTES)
@@ -163,6 +189,8 @@ class SSDP_Server:
         send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         send_sock.sendto(self.device_config.message(type="MULTICAST"), (SSDP_IP, SSDP_PORT))
         send_sock.close()
+
+    def __send_unicast(self, address):
         #unicast
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         send_sock.sendto(self.device_config.message(type="UNICAST"), address)
