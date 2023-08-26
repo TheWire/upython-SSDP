@@ -1,11 +1,18 @@
 import os
 try:
+    from micropython import const
+    upython = True
+except:
+    upython = False
+    
+if upython:
     os.uname().sysname
     import uasyncio as asyncio
     class TimeoutError(Exception):
         pass
-except:
+else:
     import asyncio
+    
 import socket
 import struct
 import re
