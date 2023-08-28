@@ -117,7 +117,7 @@ class SSDP_Server:
             self.__tcp_server = await asyncio.start_server(self.__serve_device_profile, host = self.IP, port = self.tcp_port)
         print("SSDP server started")
 
-    async def broadcast(self, interval):
+    async def broadcast(self, interval=5):
         if self.__broadcast_task != None:
             raise SSDP_Exception("ssdp broadcast already started")
         self.__broadcast_task = asyncio.create_task(self.__broadcast(interval))
