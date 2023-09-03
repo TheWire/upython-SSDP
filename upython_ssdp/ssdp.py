@@ -143,11 +143,10 @@ class SSDP_Server:
         self.stop_tcp_server()
         self.stop_broadcast()
 
-    
-
     async def __broadcast(self, interval=5):
-        self.__send_multicast()
-        await asyncio.sleep(interval)
+        while True:
+            self.__send_multicast()
+            await asyncio.sleep(interval)
         
     async def __listen(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -224,3 +223,4 @@ class SSDP_Server:
   
 class SSDP_Exception(Exception):
     pass
+
